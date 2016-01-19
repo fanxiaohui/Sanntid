@@ -28,7 +28,7 @@ def main():
     thread1.join()
     thread2.join()
     print("Hello from main!")
-    print("Hello from testeditor!")
+    print("Hello from testeditor2!")
     print("i = %d" % i) 
    
 main()
