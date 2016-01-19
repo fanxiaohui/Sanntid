@@ -10,7 +10,7 @@ mtx = Lock()
 def thread1_func():
 	global i
 	print("Hello from a thread1!")
-	for j in range (0,1000000):
+	for j in range (0,1000005):
                 mtx.acquire()
                 i +=1
                 
