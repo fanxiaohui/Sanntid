@@ -35,6 +35,7 @@ int main(){
     	printf("Thread2_join sucsess\n");
     printf("Hello from main!\n");
     printf("i = %d\n",i);
+    printf("Hello from Big Jonny");
     return 0;
     
 }
