@@ -15,7 +15,6 @@
 
 int i = 0;
 
-//sem_t s;
 pthread_mutex_t mutex;
 
 // Note the return type: void*
@@ -23,9 +22,7 @@ void* thread1_func(){
     
     for(int j=0; j<1000000;j++){
         pthread_mutex_lock(&mutex);
-        //sem_wait(&s);
         i++;
-        //sem_post(&s);
         pthread_mutex_unlock(&mutex);
     }
     
@@ -36,9 +33,7 @@ void* thread2_func(){
     
     for(int j=0; j<1000000;j++){
         pthread_mutex_lock(&mutex);
-        //sem_wait(&s);
         i--;
-        //sem_post(&s);
         pthread_mutex_unlock(&mutex);
     }
    
@@ -48,7 +43,6 @@ void* thread2_func(){
 
 int main(){
     
-    //sem_init(&s,0,1);
     pthread_mutex_init(&mutex,NULL);
     pthread_t thread1;
     pthread_t thread2;
