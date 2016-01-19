@@ -1,5 +1,11 @@
 
 An atomic operation?
+  - An operation where a processor simultaneously can read and write in the same operation. This ensures that no other process reads
+    or writes before the operation is complete.
 A semaphore?
+  - A variable used to control access, by multiple processes, to a common resource.
 A mutex?
+  - Ensuring that no two concurrent processes are in their critical section at the same time. Prevents race conditions.
 A critical section?
+  - A part of a multi-process program that may not be concurrently executed by more than one of the program's processes.
+    Typically the critical section accesses a shared resource. 
