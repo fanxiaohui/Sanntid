@@ -19,8 +19,8 @@ pthread_mutex_t mutex;
 
 // Note the return type: void*
 void* thread1_func(){
-    
-    for(int j=0; j<1000000;j++){
+    unsigned int j;
+    for(j=0; j<1000000;j++){
         pthread_mutex_lock(&mutex);
         i++;
         pthread_mutex_unlock(&mutex);
@@ -30,8 +30,8 @@ void* thread1_func(){
 }
 
 void* thread2_func(){
-    
-    for(int j=0; j<1000000;j++){
+    unsigned int j;
+    for(j=0; j<1000000;j++){
         pthread_mutex_lock(&mutex);
         i--;
         pthread_mutex_unlock(&mutex);
