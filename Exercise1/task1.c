@@ -8,14 +8,16 @@ int i = 0;
 
 // Note the return type: void*
 void* thread1_func(){
-  for(int j=0; j<1000000;j++){
+int j;
+  for(j=0; j<1000000;j++){
   		i++;
   	}
     return NULL;
 }
 
 void* thread2_func(){
-   for(int j=0; j<1000000;j++){
+int j;
+   for(j=0; j<1000000;j++){
   		i--;
 	}
     return NULL;
@@ -39,12 +41,5 @@ int main(){
     return 0;
     
 }
-
-OUTPUT
-	Success	time: 0 memory: 18632 signal:0
-	Thread1_join sucsess
-	Thread2_join sucsess
-	Hello from main!
-	i = 0
 
 
