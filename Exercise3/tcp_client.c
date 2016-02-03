@@ -16,6 +16,10 @@
 /* 
  * error - wrapper for perror
  */
+
+// ./tcp_client 192.241.187.145 20017
+
+
 void error(char *msg) {
     perror(msg);
     exit(0);
