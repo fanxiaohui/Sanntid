@@ -123,7 +123,7 @@ void tcp_listen(){
 
 //Checks if there exists a boss through UDP, if not set self to boss
 void connection_init(void){
-    int sock;
+    int sock,sock_r;
     struct sockaddr_in sa;
     int bytes_sent;
     int s = sizeof(sa);
@@ -160,14 +160,14 @@ void connection_init(void){
     /* sockets are unsigned shorts, htons(x) ensures x is in network byte order, set the port to 7654 */
     //sa.sin_port = htons(PORT);
 
-    if(inet_aton(SERVER, &sa.sin_addr) ==0)
-    {
-    exit(1);
-    }
+    //if(inet_aton(SERVER, &sa.sin_addr) ==0)
+    //{
+    //exit(1);
+    //}
     for(int i = 0;i<10;i++){
         bytes_sent = sendto(sock, buffer, strlen(buffer), 0,(struct sockaddr*)&sa, s);
         if (bytes_sent < 0) {
-                printf("Error sending packet: %s\n", strerror(errno));
+                //printf("Error sending packet: %s\n", strerror(errno));
                 exit(EXIT_FAILURE);
 
     }
@@ -177,7 +177,7 @@ void connection_init(void){
 
     //UDP packets sent, awaiting answers 
 
-    sock = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    sock_r = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
     ssize_t recsize;
     socklen_t fromlen;
 
@@ -187,31 +187,36 @@ void connection_init(void){
     sa.sin_port = htons(PORT);
     fromlen = sizeof(sa);
 
-    if (-1 == bind(sock, (struct sockaddr *)&sa, sizeof sa)) {
+
+    struct timeval tv;
+    tv.tv_sec = 5;  /* 5 Secs Timeout */
+    tv.tv_usec = 0;
+
+    if (-1 == bind(sock_r, (struct sockaddr *)&sa, sizeof sa)) {
         perror("error bind failed");
         close(sock);
         exit(EXIT_FAILURE);
     }
 
-    for (int i = 0;i<100;i++) {
-        recsize = recvfrom(sock, (void*)buffer, sizeof buffer, 0, (struct sockaddr*)&sa, &fromlen);
-        if (recsize < 0) {
-          fprintf(stderr, "%s\n", strerror(errno));
-          exit(EXIT_FAILURE);
-         }
-         if(strcmp(buffer,buffer2))
-         {
-            boss = 0;
-            exit(0);
-         }
-        printf("recsize: %zu\n ", recsize);
-        //sleep(0.1);
-        printf("datagram: %.*s\n", (int)recsize, buffer);
-    }
+     setsockopt(sock_r, SOL_SOCKET, SO_RCVTIMEO,(char *)&tv,sizeof(tv)); 
+
+      recsize = recvfrom(sock_r, (void*)buffer, sizeof buffer, 0, (struct sockaddr*)&sa, &fromlen);
+      /*if (recsize < 0) {
+        //fprintf(stderr, "%s\n", strerror(errno));
+        exit(EXIT_FAILURE);
+       }*/
+       if(!strcmp(buffer,buffer2))
+       {
+          boss = 0; 
+       }
+      printf("recsize: %zu\n ", recsize);
+      //sleep(0.1);
+      printf("datagram: %.*s\n", (int)recsize, buffer);
+  
     if(boss == -1){
         boss = 1;
     } 
-    close(sock); 
+    close(sock_r); 
 }
  
 void* udp_listen(){
