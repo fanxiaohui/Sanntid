@@ -52,10 +52,10 @@ void * communication(){
 				}
 				else if(message.type==BUTTON_INDICATOR){
 					//Turn on lamps that matches the button press matrix
-					for(int i=0;i<4;i++){ //floor
-						for(int j=0;j<3;j++){ //button type
-							if(message.type.button[j][i]){
-								elev_set_button_lamp(j,i);
+					for(int floor =0;floor<4;floor++){ //floor
+						for(int command=0;command<3;command++){ //command type
+							if(message.floor_indicator[command][floor]){
+								elev_set_button_lamp(command,i);
 							}
 						}
 					}
@@ -117,12 +117,12 @@ void * buttons (){
 	while (1){
 		int[4][3] button_matrix={0};
 		int button_is_pressed=0;
-		for(int i = 0;i<4;i++){
-			for(int j = 0;j<3;j++){
-				if(elev_get_button_signal(j,i)==1)	{
+		for(int floor = 0;floor<4;floor++){ 	//floor
+			for(int command = 0;command<3;command++){ //command
+				if(elev_get_button_signal(command,floor)==1)	{
 					button_is_pressed=1;
-					button_matrix[i][j] = 1;
-					//printf("Button: Floor: %d Command: %d\n",i,j);
+					button_matrix[i][command] = 1;
+					//printf("Button: Floor: %d Command: %d\n",floor,command);
 				}
 			}
 		}
