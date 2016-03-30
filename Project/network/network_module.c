@@ -20,12 +20,40 @@
 #include <sys/ioctl.h>
 #include <sys/types.h>
 
+#include <semaphore.h>
+#include <assert.h>
+#include <stdlib.h>
+
+//#include "lift.h"
+#include "elev.h"
+
 #define PORT 20017
 #define PORTTCP 20017
 #define SERVER "129.241.187.255"
 #define BUFSIZE 1024
 
-#include "netmod.h"
+//Message struct
+struct message {
+  int id;             //Message info
+  int elev;           //Which elevator(s) gets the message
+  char message[1500]; //Message
+};
+
+struct Elevator {
+   int floor_current;
+   int destination;
+   int reached_destination;
+  // tag_elev_motor_direction direction;
+   int new_floor_order;
+}elevator;
+struct Message_received {
+  int ID;
+  int type;
+  int new_floor_order;
+  int floor_indicator[4][3];
+};
+
+
 
 char* BROADCASTIP;
 int boss = -1;
@@ -34,6 +62,7 @@ int new_conn = 0;
 char* serv_ip;
 int optval = 1;
 int clients = 0;
+int flag = 0;
 
 pthread_mutex_t mutex;
 // gcc -std=gnu11 -Wall -g -o udp udp_send_recv.c -lpthread
@@ -46,19 +75,33 @@ void *tcp_connection_handler(void *socket_desc) //Connection handler for TCP con
     //Get the socket descriptor
     int sock = *(int*)socket_desc;
     int read_size;
-    char *message , client_message[2000];
-     
+    char *message , client_message[4], elev_go[2000], elev_go2[2000];
+
+    strcpy(elev_go,"elev go");
+    strcpy(elev_go2,"elevatorgo");
     //Send some messages to the client
-    message = "Greetings! I am your connection handler\nNow type something and i shall repeat what you type\n";
-    write(sock , message , strlen(message));
+    //message = "Greetings! I am your connection handler\n";
+    //write(sock , message , strlen(message));
      
-     
+    bzero(client_message,4); 
     //Receive a message from client
-    while( (read_size = recv(sock , client_message , 2000 , 0)) > 0 )
+    while( (read_size = recv(sock , client_message , 4 , 0)) > 0 )
     {
         //Send the message back to client
         write(sock , client_message , strlen(client_message));
-        bzero(client_message,2000);
+        elevator.new_floor_order = atoi(client_message);
+      
+        printf("Client message: %d", elevator.new_floor_order);
+
+       /* if(!strcmp(client_message,elev_go));
+        {
+            //Kjør heis
+            flag = 1;
+            elevator.new_floor_order=3;
+            printf("Halla");
+        }
+        */
+        bzero(client_message,4);
     }
      
     if(read_size == 0)
@@ -409,7 +452,6 @@ void client_init(){
     else{
       printf("TCP connection established\n");
       printf("%s\n", server_reply);
-
     }
 
     for(;;){
@@ -464,6 +506,87 @@ void* tcp_recieve(){
 }
 */
 
+
+//----------------------------
+
+
+void* communication(){
+  while(1){
+    if(flag == 1){
+      elevator.new_floor_order=3;
+      flag = 0;
+    }
+  }
+  return NULL;
+}
+
+// Init floor == 0, init direction == DIRN_STOP
+void* elevator_thread(){
+  elevator.new_floor_order=-1;
+  printf("Elevator NOT initialized");
+  elev_init();
+  //tag_elev_motor_direction direction;
+  printf("Elevator initialized");
+  while(1){
+    if(elevator.new_floor_order!=-1){
+      elevator.floor_current=elev_get_floor_sensor_signal();
+      elevator.destination=elevator.new_floor_order;
+      pthread_mutex_lock(&mutex);
+      elevator.new_floor_order=-1;
+      pthread_mutex_unlock(&mutex);
+
+      
+      if(elevator.destination < elevator.floor_current) //Go downwards
+        elev_set_motor_direction(DIRN_DOWN);
+      else if (elevator.destination > elevator.floor_current) //Go upwards
+        elev_set_motor_direction(DIRN_UP);
+      elevator.reached_destination=0;
+      while(elevator.floor_current!=elevator.destination){
+        elevator.floor_current=elev_get_floor_sensor_signal();
+        if(elevator.floor_current>=0){
+        //  elev_set_floor_indicator(elevator.floor_current-direction,0);
+          elev_set_floor_indicator(elevator.floor_current);
+        }
+        if(elevator.new_floor_order!=-1){
+          elevator.destination=elevator.new_floor_order;
+          pthread_mutex_lock(&mutex);
+            elevator.new_floor_order=-1;
+          pthread_mutex_unlock(&mutex);
+        }
+      }
+      //elevator.direction=DIRN_STOP;
+      elev_set_motor_direction(DIRN_STOP);
+      elevator.reached_destination=1;
+      elev_set_door_open_lamp(1);
+      sleep(5);
+      elev_set_door_open_lamp(0);
+
+    }
+  }
+  return NULL;
+}
+
+/*
+void * buttons(){
+
+  int button_is_pressed=0;
+  while (1){
+    for(int floor = 0;floor<4;floor++){   //floor
+      for(int command = 0;command<3;command++){ //command
+        if(elev_get_button_signal(command,floor)==1)  {
+          pthread_mutex_lock(&mutex);
+          communication.button_is_pressed=1;
+          communication.button.state[floor][command] = 1;
+          pthread_mutex_unlock(&mutex);
+          //printf("Button: Floor: %d Command: %d\n",floor,command);
+        }
+      }
+    }  
+}
+
+*/
+//-------------------------------------
+
 int main(int argc , char *argv[])
 {   
   
@@ -472,13 +595,18 @@ int main(int argc , char *argv[])
     connection_init();
     printf("Boss = %d\n", boss);
     if(boss == 1){
-      pthread_t tcp_listen_thread,udp_listen_thread,udp_send_thread;
+      pthread_t tcp_listen_thread,udp_listen_thread,udp_send_thread,communication_thread,elev_thread;
       pthread_create( &udp_listen_thread, NULL, udp_listen, NULL);
       pthread_create( &udp_send_thread, NULL, udp_send, NULL);
       pthread_create( &tcp_listen_thread, NULL, tcp_listen, NULL);
+      pthread_create( &elev_thread, NULL, elevator_thread, NULL);
+     // pthread_create( &communication_thread, NULL, communication, NULL);
       pthread_join( udp_listen_thread , NULL);
       pthread_join( udp_send_thread , NULL);
       pthread_join( tcp_listen_thread , NULL);
+      pthread_join( elev_thread, NULL);
+      //pthread_join( communication_thread, NULL);
+
     }
     else{
 
