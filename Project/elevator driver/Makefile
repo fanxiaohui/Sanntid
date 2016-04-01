@@ -8,7 +8,7 @@ CFLAGS = -std=c11 -g -Wall -Wextra
 LDFLAGS = -lcomedi -lm
 
 # list of sources
-ELEVSRC = elev.c io.c main.c
+ELEVSRC = elev.c io.c main.c lift.c
 
 # program executable file name.
 TARGET = elevator
