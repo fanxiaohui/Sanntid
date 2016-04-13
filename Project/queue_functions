@@ -34,9 +34,7 @@ int cost_function(elev_button_type_t type, int floor){
   int client=-1; //Unavilable
 
 
-if(floor==3){
-  
-}
+
 //Elevator is available at the same floor
   for(int i=0;i<N_CLIENTS;i++){
     if(elev_client[i].direction == DIRN_STOP && elev_client[i].floor_current==floor){
@@ -47,7 +45,55 @@ if(floor==3){
     return client;
     //Finished
   }
+if(floor==3){
+ for(int i=0;i<N_CLIENTS;i++){
+    if(elev_client[i].direction == DIRN_UP && elev_client[i].queue[floor]==1){
+      if(abs(elev_client[i].floor_current-floor)<delta){
+        delta=abs(elev_client[i].floor_current-floor);
+        client =i;
+      }   
+    }
+  }
+  if(client!=-1){
+    return client;
+  }
+  for(int=1;i<N_CLIENTS;i++){
+      if(elev_client[i].direction == DIRN_UP){
+        if(abs(elev_client[i].floor_current-floor)<delta){
+          delta=abs(elev_client[i].floor_current-floor);
+          client =i;
+        } 
+      }
+  }
+  if(client!=-1){
+    return client;
+  }
+}
 
+else if(floor==0){
+ for(int i=0;i<N_CLIENTS;i++){
+    if(elev_client[i].direction == DIRN_DOWN && elev_client[i].queue[floor]==1){
+      if(abs(elev_client[i].floor_current-floor)<delta){
+        delta=abs(elev_client[i].floor_current-floor);
+        client =i;
+      }   
+    }
+  }
+  if(client!=-1){
+    return client;
+  }
+  for(int i=0;i<N_CLIENTS;i++){
+    if(elev_client[i].direction == DIRN_DOWN){
+      if(abs(elev_client[i].floor_current-floor)<delta){
+        delta=abs(elev_client[i].floor_current-floor);
+        client =i;
+      }   
+    }
+  }
+  if(client!=-1){
+  }
+
+}
 
 //Elevator runs in the ordrered direction, and is stopping at the same floor
   for(int i=0;i<N_CLIENTS;i++){
@@ -60,7 +106,6 @@ if(floor==3){
   }
   if(client!=-1){
     return client;
-    //Finished
   }
 
 
@@ -75,7 +120,6 @@ if(floor==3){
   }
   if(client!=-1){
     return client;
-    //Finished
   }
 
 //Elevator is available, but at a different floor
@@ -89,10 +133,8 @@ if(floor==3){
   }
   if(client=!-1){
     return client;
-    //Finished
   }
   //At this point I know that all elevators are running in the wrong direction
   // -> I assign client 1
-  client =0;
   return client;
 }
