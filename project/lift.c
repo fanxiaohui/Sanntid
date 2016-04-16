@@ -118,7 +118,8 @@ void elevator_thread(){
 	//elev_init();
 	elevator.floor_current = 0;
 	elevator.direction=DIRN_STOP;
-
+	int last_floor =0;
+	elev_motor_direction_t  next_direction=DIRN_UP;
 	message_send.elevator.direction = elevator.direction;
 	message_send.elevator.floor_current = elevator.floor_current;
 	char transmit[BUFSIZE];
@@ -135,43 +136,27 @@ void elevator_thread(){
 		if(sum != 0){
 			//puts("New order, elev thread");
 			elevator.floor_current = elev_get_floor_sensor_signal();
-			//elev_set_motor_direction(elevator.direction);
-			int orders_up=0;
-			int orders_down=0;
-			if(elevator.direction == DIRN_STOP){
-				for(int i=elevator.floor_current+1;i<N_FLOORS;i++){
-					if(elevator.queue[i] == 1){
-						orders_up++;
-						puts("Order up");
-					}
-
-				}
-				for( int i=elevator.floor_current-1;i>=0;i--){
-					if(elevator.queue[i] == 1){
-						orders_down++;
-						puts("Order down");
+			if(next_direction==DIRN_UP){
+				for(int i=elevator.floor_current;i<N_FLOORS;i++){
+					if(elevator.queue[i]){
+						elevator.direction=DIRN_UP;
 					}
 				}
-				if (orders_up == 0 && orders_down == 0){
-				elevator.direction=DIRN_STOP;
-				}
-				else if(orders_up>orders_down){
-					elevator.direction=DIRN_UP;
-					puts("DIRN UP");
-				}
-			
-				else{
-					elevator.direction=DIRN_DOWN;
-					puts("DIRN DOWN");
+			}
+			else if(next_direction==DIRN_DOWN){
+				for(int i = elevator.floor_current;i>=0;i--){
+					elevator.direction==DIRN_DOWN;
 				}
 			}
-			for(int i=0;i<4;i++){
-				message_send.elevator.queue[i]=elevator.queue[i];
-			}
-			message_send.elevator.direction = elevator.direction;
-			message_send.elevator.floor_current = elevator.floor_current;
-			send_message(ELEV_UPDATE,message_send);
-			elev_set_motor_direction(elevator.direction);
+			if(elevator.direction!=DIRN_STOP){
+				message_send.elevator.direction = elevator.direction;
+				message_send.elevator.floor_current = elevator.floor_current;
+				char transmit[BUFSIZE];
+				serialization(ELEV_UPDATE, message_send, transmit);
+				pthread_t message_send_thread;
+	    		pthread_create(&message_send_thread, NULL , tcp_send, (void*)transmit);	
+				elev_set_motor_direction(elevator.direction);
+		}
 			
 		}
 
@@ -193,28 +178,17 @@ void elevator_thread(){
 						printf("%d ", elevator.queue[i]);		
 					}
 					
-					message_send.elevator.prev_direction = elevator.direction;	
+					
 					if(sum==0){
 						puts("\nDIRN STOP");
 						elevator.direction = DIRN_STOP;
+						next_direction= DIRN_STOP;
 					}
-					else if(elevator.direction==DIRN_UP){
-						sum=0;
-						for(int i=elevator.floor_current;i<N_FLOORS;i++){
-							sum+=elevator.queue[i];
-						}
-						if(sum==0)
-							elevator.direction=DIRN_DOWN;
+					else{
+						elevator.direction=get_next_direction(elevator, last_floor, &next_direction);
 					}
-					else if(elevator.direction==DIRN_DOWN){
-						sum=0;
-						for(int i=elevator.floor_current;i>=0;i--){
-							sum+=elevator.queue[i];
-						}
-						if(sum == 0){
-							elevator.direction=DIRN_UP;
-						}
-					}
+
+					message_send.elevator.prev_direction = elevator.direction;	
 					message_send.elevator.direction = elevator.direction;
 					message_send.elevator.floor_current = elevator.floor_current;
 					printf("Floor current: %d\n", message_send.elevator.floor_current);
@@ -267,7 +241,7 @@ void elevator_thread(){
 				    elev_set_button_lamp(BUTTON_INSIDE,elevator.floor_current,0);
 				    sleep(2);
 				    elev_set_door_open_lamp(0);
-
+				    last_floor=elevator.floor_current;
 				    elev_set_motor_direction(elevator.direction);
 				}
 				else if(floor_update_not_sent){
@@ -344,6 +318,79 @@ void button_check(){
 	} 			
 }
 
+elev_motor_direction_t get_next_direction(Elevator elevator, int last_floor, elev_motor_direction_t *direction_next){
+					int up, down,delta;
+					switch(elevator.floor_current){
+						case 3:
+								for(int i=3;i>=0;i--){
+									if(elevator.queue[i]){
+										elevator.direction=DIRN_DOWN;
+										break;
+									}
+									else
+										direction_next=DIRN_DOWN;
+								}
+								break;
+						case 0:
+								for(int i=0;i<N_FLOORS;i++){
+									if(elevator.queue[i]){
+										elevator.direction=DIRN_UP;
+										break;
+										}
+									else 
+										direction_next=DIRN_UP;
+								}
+								break;
+								
+						default:	
+							
+							if(elev_orders[elevator.floor_current][2] && my_ID);
+								up=1;
+							if(elev_orders[elevator.floor_current][2] && my_ID);	
+								down=1;
+							delta=last_floor-elevator.floor_current;
+							if((delta<0) && (up==1)){ //DIRN UP
+								for(int i=elevator.floor_current;i<N_FLOORS;i++){
+									if(elevator.queue[i]){
+										elevator.direction=DIRN_UP;
+										break;
+									}
+									else
+										direction_next=DIRN_UP;
+								}
+							}
+							else if((delta>0) && (down==1)){
+								for(int i=elevator.floor_current;i>=0;i--){
+									if(elevator.queue[i]){
+										elevator.direction=DIRN_DOWN;
+										break;
+									}
+									else
+										direction_next=DIRN_DOWN;
+								}
+							}
+							else if(up){
+								for(int i=elevator.floor_current;i<N_FLOORS;i++){
+									if(elevator.queue[i]){
+										elevator.direction=DIRN_UP;
+										break;
+									}
+									else
+										direction_next=DIRN_UP;
+								}
+							}
+							else if(down){
+								for(int i=elevator.floor_current;i>=0;i--){
+									if(elevator.queue[i]){
+										elevator.direction=DIRN_DOWN;
+										break;
+									}
+									else
+										direction_next=DIRN_DOWN;
+								}		
+							}
+						}
+					}
 
 
 
