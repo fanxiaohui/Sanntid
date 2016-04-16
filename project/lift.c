@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include "elev.h"
 #include "main.h"
+#include "communication.h"
 //SLAVE:
 //Shared variables
 /*
@@ -20,15 +21,15 @@ struct Message{
 Elevator elevator;
 //Button button;
 pthread_mutex_t mutex;
-
+int elev_orders[6][2];
 //RECIEVING THREAD
-void* message_handler(void *msg_recv){
-	puts("aell");
+void* client_message_handler(void *msg_recv){
+	puts("Client message handler started");
 	pthread_mutex_init(&mutex,NULL);
 	char receive[BUFSIZE];
-	//bzero(receive,BUFSIZE);
+	bzero(receive,BUFSIZE);
 	char *buf = (char*)msg_recv;
-	for(int i = 0;i<19;i++){
+	for(int i = 0;i<BUFSIZE;i++){
 		receive[i] = buf[i];
 	}
 	/*
@@ -41,28 +42,53 @@ void* message_handler(void *msg_recv){
 	switch(message_receive.type){
 		case ELEV_ORDER:
 			puts("ELEV ORDER");
-			elev_set_button_lamp(BUTTON_CALL_UP, 0, message_receive.lamps_outside[0]);
-			elev_set_button_lamp(BUTTON_CALL_UP, 1, message_receive.lamps_outside[1]);
-			elev_set_button_lamp(BUTTON_CALL_UP, 2, message_receive.lamps_outside[2]);
-			elev_set_button_lamp(BUTTON_CALL_DOWN, 1, message_receive.lamps_outside[3]);
-			elev_set_button_lamp(BUTTON_CALL_DOWN, 2, message_receive.lamps_outside[4]);
-			elev_set_button_lamp(BUTTON_CALL_DOWN, 3, message_receive.lamps_outside[5]);
+			elev_set_button_lamp(BUTTON_CALL_UP, 0, message_receive.orders[0][0]);
+			elev_set_button_lamp(BUTTON_CALL_UP, 1, message_receive.orders[1][0]);
+			elev_set_button_lamp(BUTTON_CALL_UP, 2, message_receive.orders[2][0]);
+			elev_set_button_lamp(BUTTON_CALL_DOWN, 1, message_receive.orders[3][0]);
+			elev_set_button_lamp(BUTTON_CALL_DOWN, 2, message_receive.orders[4][0]);
+			elev_set_button_lamp(BUTTON_CALL_DOWN, 3, message_receive.orders[5][0]);
+
+			for(int i=0;i<6;i++){ //Global queue			 
+				elev_orders[i][0] = message_receive.orders[i][0];
+				elev_orders[i][1] = message_receive.orders[i][1];
+				queue[i][0] = message_receive.orders[i][0];
+				queue[i][1] = message_receive.orders[i][1];
+			}
+
 			printf("Message_recieve.ID: %d\n", message_receive.ID);
 			printf("My ID: %d\n", my_ID);
-			if(message_receive.ID==my_ID){
+
+			if(message_receive.ID==my_ID){ //Sets local queue based on ID
 				puts("Order recieved");
 				pthread_mutex_lock(&mutex);
 				elevator.queue[message_receive.elevator.new_floor_order]=1;
 				pthread_mutex_unlock(&mutex);
-				elevator.new_floor_order=1;
-			}
-			for(int i=0;i<N_FLOORS;i++){			
-				printf("%d ", elevator.queue[i]);		
+				//elevator.new_floor_order=1;
 			}
 			
+		
 			break;
-		case BUTTON_CHECK:
-			puts("BUTTON CHECKKI");
+		case ORDER_UPDATE:
+			for(int i=0;i<6;i++){ //Global queue			 
+				elev_orders[i][0] = message_receive.orders[i][0];
+				elev_orders[i][1] = message_receive.orders[i][1];
+				if(my_ID == message_receive.orders[i][1]){
+					if(i == 0)
+						elevator.queue[0] = 1;
+					else if(i == 1 || i == 3)
+						elevator.queue[1] = 1;
+					else if(i == 2 || i == 4)
+						elevator.queue[2] = 1;
+					else if(i == 5)
+						elevator.queue[3] = 1;
+				}
+			}
+			printf("Elev queue: ");
+			for(int i = 0;i<4;i++){
+				printf("%d ",elevator.queue[i]);
+			}
+			printf("\n");
 
 			break;
 		case BUTTON_LAMP:
@@ -70,52 +96,26 @@ void* message_handler(void *msg_recv){
 				//for(int i = 0;i<6;i++){
 					//printf("%d ",message_receive.lamps_outside[i]);
 				//}
-			    elev_set_button_lamp(BUTTON_CALL_UP, 0, message_receive.lamps_outside[0]);
-				elev_set_button_lamp(BUTTON_CALL_UP, 1, message_receive.lamps_outside[1]);
-				elev_set_button_lamp(BUTTON_CALL_UP, 2, message_receive.lamps_outside[2]);
-				elev_set_button_lamp(BUTTON_CALL_DOWN, 1, message_receive.lamps_outside[3]);
-				elev_set_button_lamp(BUTTON_CALL_DOWN, 2, message_receive.lamps_outside[4]);
-				elev_set_button_lamp(BUTTON_CALL_DOWN, 3, message_receive.lamps_outside[5]);
+			    elev_set_button_lamp(BUTTON_CALL_UP, 0, message_receive.orders[0][0]);
+				elev_set_button_lamp(BUTTON_CALL_UP, 1, message_receive.orders[1][0]);
+				elev_set_button_lamp(BUTTON_CALL_UP, 2, message_receive.orders[2][0]);
+				elev_set_button_lamp(BUTTON_CALL_DOWN, 1, message_receive.orders[3][0]);
+				elev_set_button_lamp(BUTTON_CALL_DOWN, 2, message_receive.orders[4][0]);
+				elev_set_button_lamp(BUTTON_CALL_DOWN, 3, message_receive.orders[5][0]);
 			break;
-		case ELEV_UPDATE:
+		case ID_UPDATE:
+			my_ID = message_receive.ID;
 			break;
 		case BACKUP:
 			break;
 
 	}
-	//char *buf = (char *)message;
-	//printf("Message recieved: %s",message);
-	/*switch(message_recieve.type){
-		case ELEVATOR:
-			if(message_recieve.elevator.new_floor_order){
-				pthread_mutex_lock(&mutex);
-					elevator.new_floor_order=message_recieve.elevator.new_floor_order;
-				pthread_mutex_unlock(&mutex);
-			}
-			if(message_recieve.elevator.reached_destination){
-				if(message_recieve.elevator.destination==3) //TOP FLOOR
-					elev_set_button_lamp(BUTTON_CALL_UP,message_recieve.elevator.destination,0);
-				else if(message_recieve.elevator.destination==0)//BOTTOM FLOOR
-					elev_set_button_lamp(BUTTON_CALL_UP,message_recieve.elevator.destination,0);
-				else if(message_recieve.elevator.direction==-1)//GOING DOWN
-					elev_set_button_lamp(BUTTON_CALL_DOWN,message_recieve.elevator.destination,0);	
-				else if(message_recieve.elevator.direction==1)//GOING UP
-					elev_set_button_lamp(BUTTON_CALL_UP,message_recieve.elevator.destination,0);		
-			}
-			break;		
-		case BUTTON_LAMP: //Auto sets the elevator order button lamp, not the ones inside.
-		    for (int f = 0; f < N_FLOORS; f++) {
-		        for (elev_button_type_t b = 0; b < N_BUTTONS-1; b++){ 
-		            elev_set_button_lamp(b, f, button.matrix[(int)b][f]);
-		        }
-     		}
- 			break;
-	}*/
+
 }
 				
 void elevator_thread(){
 	Message message_send;
-	elev_init();
+	//elev_init();
 	elevator.floor_current = 0;
 	elevator.direction=DIRN_STOP;
 
@@ -165,13 +165,12 @@ void elevator_thread(){
 					puts("DIRN DOWN");
 				}
 			}
+			for(int i=0;i<4;i++){
+				message_send.elevator.queue[i]=elevator.queue[i];
+			}
 			message_send.elevator.direction = elevator.direction;
 			message_send.elevator.floor_current = elevator.floor_current;
-			char transmit[BUFSIZE];
-			serialization(ELEV_UPDATE, message_send, transmit);
-			pthread_t message_send_thread;
-			pthread_create(&message_send_thread, NULL , tcp_send, (void*)transmit);	
-
+			send_message(ELEV_UPDATE,message_send);
 			elev_set_motor_direction(elevator.direction);
 			
 		}
@@ -186,9 +185,10 @@ void elevator_thread(){
 					elev_set_button_lamp(BUTTON_INSIDE,elevator.floor_current,0);
 
 					elevator.queue[elevator.floor_current]=0;
-					puts("\nElevator queue cleared");
+					printf("Elevator queue updated: \t");
 					sum = 0;
 					for(int i=0;i<N_FLOORS;i++){
+						message_send.elevator.queue[i]=elevator.queue[i];
 						sum+=elevator.queue[i];
 						printf("%d ", elevator.queue[i]);		
 					}
@@ -215,24 +215,64 @@ void elevator_thread(){
 							elevator.direction=DIRN_UP;
 						}
 					}
-
 					message_send.elevator.direction = elevator.direction;
 					message_send.elevator.floor_current = elevator.floor_current;
+					printf("Floor current: %d\n", message_send.elevator.floor_current);
 
-					char transmit[BUFSIZE];
-					serialization(ELEV_UPDATE, message_send, transmit);
-					pthread_t message_send_thread;
-					pthread_create(&message_send_thread, NULL , tcp_send, (void*)transmit);	
+					for(int i = 0;i<6;i++){
+						message_send.orders[i][0] = elev_orders[i][0];
+						message_send.orders[i][1] = elev_orders[i][1];
+					}
+
+					switch (elevator.floor_current){
+						case 0:
+							message_send.orders[0][0] = 0;
+							message_send.orders[0][1] = my_ID;
+							break;
+						case 1:
+							if(elev_orders[1][1] == my_ID){
+								message_send.orders[1][0] = 0;
+								message_send.orders[1][1] = my_ID;
+							}
+							else {
+								message_send.orders[3][0] = 0;
+								message_send.orders[3][1] = my_ID;
+							}
+							//puts("Case 1");
+							break;
+						case 2:
+							if(elev_orders[2][1] == my_ID){
+								message_send.orders[2][0] = 0;
+								message_send.orders[2][1] = my_ID;
+							}
+							else {
+								message_send.orders[4][0] = 0;
+								message_send.orders[4][1] = my_ID;
+							}
+							//puts("Case 2");
+							break;							
+						case 3:
+							message_send.orders[5][0] = 0;
+							message_send.orders[5][1] = my_ID;
+							break;
+					}
+					puts("ORDER UPDATE");
+       				 for(int i = 0;i<6;i++){
+          				printf("Order: %d \t ID: %d\n",message_send.orders[i][0], message_send.orders[i][1]);
+
+        				}
+					send_message(ORDER_UPDATE,message_send);
 					floor_update_not_sent=0;
 					elev_set_door_open_lamp(1);
 				    elev_set_button_lamp(BUTTON_INSIDE,elevator.floor_current,0);
-				    sleep(5);
+				    sleep(2);
 				    elev_set_door_open_lamp(0);
 
 				    elev_set_motor_direction(elevator.direction);
 				}
 				else if(floor_update_not_sent){
 					message_send.elevator.direction = elevator.direction;
+					message_send.elevator.prev_direction = elevator.direction;
 					message_send.elevator.floor_current = elevator.floor_current;
 					char transmit[BUFSIZE];
 					serialization(ELEV_UPDATE, message_send, transmit);
@@ -290,80 +330,18 @@ void button_check(){
 			button_is_pressed=0;
 			//message_send.type = BUTTON_CHECK;
 			//SPAWN THREAD TO DO THE SENNDING
-			char transmit[BUFSIZE];
+		/*	char transmit[BUFSIZE];
 			serialization(BUTTON_CHECK, message_send, transmit);
 			pthread_t message_send_thread;
     		pthread_create(&message_send_thread, NULL , tcp_send, (void*)transmit);	
-
+		*/
+    		send_message(BUTTON_CHECK, message_send);
 		}
 		if(!connection){
 			break;
 		}
 
 	} 			
-}
-
-void serialization(int message_type, Message message_send, char *transmit){
-	//bzero(transmit,BUFSIZE);
-	//message_send.ID = client_ID;
-	message_send.type = message_type;
-	//message_send.elevator.floor_current = -1;
-
-	transmit[0] = message_send.ID;
-	transmit[1] = message_send.type;
-	transmit[2] = message_send.elevator.floor_current;
-	transmit[3] = message_send.elevator.reached_destination;
-	transmit[4] = message_send.elevator.prev_direction;
-	transmit[5] = message_send.elevator.direction;
-	transmit[6] = message_send.elevator.new_floor_order;
-	transmit[7] = message_send.elevator.queue[0];
-	transmit[8] = message_send.elevator.queue[1];
-	transmit[9] = message_send.elevator.queue[2];
-	transmit[10] = message_send.elevator.queue[3];
-	transmit[11] = message_send.button.floor;
-	transmit[12] = message_send.button.type;
-	transmit[13] = message_send.lamps_outside[0];
-	transmit[14] = message_send.lamps_outside[1];
-	transmit[15] = message_send.lamps_outside[2];
-	transmit[16] = message_send.lamps_outside[3];
-	transmit[17] = message_send.lamps_outside[4];
-	transmit[18] = message_send.lamps_outside[5];
-	for(int i = 0;i<BUFSIZE-1;i++){
-		if(transmit[i] == 0)
-			transmit[i] = '0';
-	}
-	printf("\n");
-}
-
-Message deserialization(char *msg_recv){
-	for(int i = 0;i<BUFSIZE-1;i++){
-		if(msg_recv[i] == '0')
-			msg_recv[i] = 0;
-	}
-	Message message_receive;
-
-	message_receive.ID=msg_recv[0];
-	message_receive.type=msg_recv[1];
-	message_receive.elevator.floor_current=msg_recv[2];
-	message_receive.elevator.reached_destination=msg_recv[3];
-	message_receive.elevator.prev_direction=msg_recv[4];
-	message_receive.elevator.direction=msg_recv[5];
-	message_receive.elevator.new_floor_order=msg_recv[6];
-	message_receive.elevator.queue[0] = msg_recv[7];
-	message_receive.elevator.queue[1] = msg_recv[8];
-	message_receive.elevator.queue[2] = msg_recv[9];
-	message_receive.elevator.queue[3] = msg_recv[10];
-	message_receive.button.floor = msg_recv[11];
-	message_receive.button.type = msg_recv [12];
-	message_receive.lamps_outside[0] = msg_recv[13];
-	message_receive.lamps_outside[1] = msg_recv[14];
-	message_receive.lamps_outside[2] = msg_recv[15];
-	message_receive.lamps_outside[3] = msg_recv[16];
-	message_receive.lamps_outside[4] = msg_recv[17];
-	message_receive.lamps_outside[5] = msg_recv[18];
-
-	return message_receive;
-
 }
 
 
