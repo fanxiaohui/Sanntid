@@ -8,7 +8,7 @@ CFLAGS = -std=gnu11 -g -w -o -lpthread
 LDFLAGS = -lcomedi -lm -lpthread
 
 # list of sources
-ELEVSRC = io.c  elev.c lift.c network_module.c queue_functions.c main.c
+ELEVSRC = io.c  elev.c lift.c network_module.c queue_functions.c
 
 # program executable file name.
 TARGET = test

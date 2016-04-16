@@ -26,12 +26,13 @@
 #include <semaphore.h>
 #include <assert.h>
 #include "main.h"
-#include "lift.h"
+//#include "lift.h"
 #include "elev.h"
+#include "communication.h"
 
 
 #define PORT 20017
-
+//ssh gnome: ssh -X student@129.241.187.xxx
 //#define SERVER "129.241.187.255"
 
 char* BROADCASTIP;
@@ -47,48 +48,44 @@ connection = 0;
 int broadcast = 0;
 int *sockets[2];
 client_sockets[3];
+char * client_ip[3];
+struct recovery_local_orders{
+  char* ip_table[3];
+  int orders[3][4];
+}recovery_local_orders;
+char * client_ip[3];
 int recv_client = 0;
 my_ID; 
 queue[6][2]={0};
 Elevator elev_client[3];
-
+int update_orders = 0;
 
 pthread_mutex_t mutex;
-// gcc -std=gnu11 -Wall -g -o udp udp_send_recv.c -lpthread
-/*
- * This will handle connection for each client
- * */
 
-void *tcp_connection_handler(void *socket_desc) //Connection handler for TCP connections
-{
-    //Get the socket descriptor
-    int client_id = clients-1;
-    int sock = *(int*)socket_desc;
-    int read_size;
-    char client_message[BUFSIZE], *message;
+void *tcp_connection_handler(void *socket_desc){ //Connection handler for TCP connections
 
-    //Send some messages to the client
-    //message = "Your ID is: " + (clients+'0');
-    //write(sock , message , strlen(message));
-    sleep(1);
-    client_message[0] = (clients-1)+'0';
-    write(sock , client_message , strlen(client_message));
-    
+  //Get the socket descriptor
+  int client_id = clients-1;
+  int sock = *(int*)socket_desc;
+  int read_size;
+  char client_message[BUFSIZE], *message;
 
-    //write(sock , client_message , strlen(client_message)); //Give client ID
-    bzero(client_message,BUFSIZE); 
+  //Send some messages to the client
+  //message = "Your ID is: " + (clients+'0');
+  //write(sock , message , strlen(message));
+  sleep(1);
+  client_message[0] = (clients-1)+'0';
+  write(sock , client_message , strlen(client_message));
+  
 
-    //Receive a message from client
-    while( (read_size = recv(sock , client_message , BUFSIZE , 0)) > 0 )
-    {
-    
-      broadcast = 0;
-      Message message_send,message_receive;
+  //write(sock , client_message , strlen(client_message)); //Give client ID
+  bzero(client_message,BUFSIZE); 
 
-      message_receive = deserialization(client_message);
-   
-
-    //deserialization( client_message);
+  //Receive a message from client
+  while( (read_size = recv(sock , client_message , BUFSIZE , 0)) > 0 ){
+    broadcast = 0;
+    Message message_send,message_receive;
+    message_receive = deserialization(client_message);
     switch(message_receive.type){
       case BUTTON_CHECK: //ok
         
@@ -101,12 +98,13 @@ void *tcp_connection_handler(void *socket_desc) //Connection handler for TCP con
             break;
           default:
             if(add_to_queue(message_receive.button.type, message_receive.button.floor)){
-              //send lamp
-              char lamp_message[BUFSIZE], server_message[BUFSIZE];
+
+              char server_message[BUFSIZE];
               for(int i = 0;i<6;i++){
-                message_send.lamps_outside[i] = queue[i][1];
+                message_send.orders[i][0] = queue[i][0];
+                message_send.orders[i][1] = queue[i][1];
               }
-              /*serialization(BUTTON_LAMP, message_send, lamp_message);
+            /*serialization(BUTTON_LAMP, message_send, lamp_message);
               for(int i = 0;i<clients;i++){
                 write(client_sockets[i], lamp_message, strlen(lamp_message));
               }
@@ -122,18 +120,20 @@ void *tcp_connection_handler(void *socket_desc) //Connection handler for TCP con
               else if(elev_client[2].direction == DIRN_STOP){
                 message_send.ID = 2;
               }
-              */
+            */
               message_send.ID = cost_function(message_receive.button.type, message_receive.button.floor);
               printf("Which client gets the order: %d",message_send.ID);
               message_send.elevator.new_floor_order=message_receive.button.floor;
               if(message_receive.button.type==BUTTON_CALL_UP){
-                queue[message_receive.button.floor][2] = message_send.ID;
-                queue[message_receive.button.floor][1] = 1;
+                queue[message_receive.button.floor][1] = message_send.ID;
+                queue[message_receive.button.floor][0] = 1;
+                message_send.orders[message_receive.button.floor][1] = message_send.ID;
 
               }
               else{
-                queue[message_receive.button.floor+2][2] = message_send.ID;
-                queue[message_receive.button.floor][1] = 1;
+                queue[message_receive.button.floor+2][1] = message_send.ID;
+                queue[message_receive.button.floor+2][0] = 1;
+                message_send.orders[message_receive.button.floor+2][1] = message_send.ID;
               }
 
               serialization(ELEV_ORDER, message_send, server_message);
@@ -145,60 +145,21 @@ void *tcp_connection_handler(void *socket_desc) //Connection handler for TCP con
               
         break;
       case ELEV_UPDATE: //ok
-        puts("ELEV_FLOOR_UPDATE");
+        //Only updates elevator location
+      	printf("ELEV FLOOR UPDATE BY ELEVATOR #%d\n",client_id);
 
         elev_client[client_id].floor_current = message_receive.elevator.floor_current;
         elev_client[client_id].direction = message_receive.elevator.direction;
 
-        printf("Elevator #%d \t Floor current: %d \t Direction: %1d\n", 0,elev_client[0].floor_current,(int)elev_client[0].direction); 
-        printf("Elevator #%d \t Floor current: %d \t Direction: %1d\n", 1,elev_client[1].floor_current,(int)elev_client[1].direction); 
-        printf("Elevator #%d \t Floor current: %d \t Direction: %1d\n", 2,elev_client[2].floor_current,(int)elev_client[2].direction); 
-
-        /*
-        if(queue[message_receive.elevator.floor_current][2] == client_id && message_receive.elevator.direction == DIRN_UP){
-              queue[message_receive.elevator.floor_current][1]=0;
-              queue[message_receive.elevator.floor_current][2]=-1;
-              puts("DIRNUPPI");
-              broadcast = 1;
+        for(int i = 0;i<clients;i++){
+        	printf("Elevator #%d \t Floor current: %d \t Direction: %1d\n", i,elev_client[i].floor_current,(int)elev_client[i].direction); 
         }
-        else if(queue[message_receive.elevator.floor_current+2][2] == client_id && message_receive.elevator.direction == DIRN_DOWN){
-            queue[message_receive.elevator.floor_current+2][1]=0;
-            queue[message_receive.elevator.floor_current+2][2]=-1;
-            puts("DIRN DOWN");
-            broadcast = 1;
-        }
-        else {
-          for(int i = 0;i<6;i++){
-          //  if(queue[i][2] == client_id){
-              queue[i][1] = 0;
-              queue[i][2] = -1;
-              broadcast = 1;
-        //     }
-        }
-
-        }
-        */
-        /*
-        if(message_receive.elevator.prev_direction == DIRN_UP){
-              queue[message_receive.elevator.floor_current][1]=0;
-              queue[message_receive.elevator.floor_current][2]=-1;
-              puts("DIRN UP");
-              broadcast = 1;
-        }
-        else if(message_receive.elevator.prev_direction == DIRN_DOWN){
-            queue[message_receive.elevator.floor_current+2][1]=0;
-            queue[message_receive.elevator.floor_current+2][2]=-1;
-            puts("DIRN DOWN");
-            broadcast = 1;
-        }
-        */
-        for(int i = 0;i<6;i++){
-          queue[i][1]= 0;
-        }
+        
+      /*
         if(broadcast){
           char lamp_message[BUFSIZE];
           for(int i = 0;i<6;i++){
-            message_send.lamps_outside[i] = queue[i][1];
+            message_send.lamps_outside[i] = queue[i][0];
           }
           serialization(BUTTON_LAMP, message_send, lamp_message);
           for(int i = 0;i<clients;i++){
@@ -208,74 +169,94 @@ void *tcp_connection_handler(void *socket_desc) //Connection handler for TCP con
 
         puts("\nNew queue");
         for(int i = 0;i<6;i++){
-          printf("%d",queue[i][1]);
+          printf("Order: %d \t ID: %d\n",queue[i][0],queue[i][1]);
+
         }
         puts("");
+       */
         break;
+      case ORDER_UPDATE:
+      	//Clears orders that are done and sets lamps
 
+      	elev_client[client_id].floor_current = message_receive.elevator.floor_current;
+        elev_client[client_id].direction = message_receive.elevator.direction;
+        for(int i = 0;i<4;i++){
+          elev_client[client_id].queue[i]=message_receive.elevator.queue[i];
+        }
+
+        for(int i = 0;i<clients;i++){
+        	printf("Elevator #%d \t Floor current: %d \t Direction: %1d\n", i,elev_client[i].floor_current,(int)elev_client[i].direction); 
+        }
+
+      	for(int i = 0;i<6;i++){
+      		queue[i][0] &= message_receive.orders[i][0];
+      		if(!(queue[i][0]&&message_receive.orders[i][0]))
+      			queue[i][1] = -1;
+
+      	}
+      	puts("\nNew queue");
+        for(int i = 0;i<6;i++){
+          printf("Order: %d \t ID: %d\n",queue[i][0],queue[i][1]);
+
+        }
+        message_send.ID = -1;
+        for(int i = 0;i<6;i++){
+            message_send.orders[i][0] = queue[i][0];
+            message_send.orders[i][1] = queue[i][1];
+        }
+        char server_message[BUFSIZE];
+        serialization(ELEV_ORDER, message_send, server_message);
+        for(int i = 0;i<clients;i++){
+            write(client_sockets[i], server_message, strlen(server_message));  
+        }
+        break;
+    }    
+    bzero(client_message,BUFSIZE);
+  }
+    
+  if(read_size == 0){
+      puts("Client disconnected");
+      clients--;
+      fflush(stdout);
+      for(int i=0;i<3;i++){
+        if(recovery_local_orders.ip_table[i]=client_ip[client_id])
+          for(int j=0;j<N_FLOORS;j++){
+            recovery_local_orders.orders[i][j]=elev_client[client_id].queue[j];
+          }
       }
-      
-        /*if(atoi(client_message)==1){
-        	for(int i = 0;i<clients;i++){
-        		int tempsock = *(int*)sockets[i];
-        		write(tempsock, client_message, strlen(client_message));
-        	}
-        }
-        */
-        /*
-        if(atoi(client_message) >= 0 && atoi(client_message) < 4){
-        	for(int i = 0;i<clients;i++){
-        		write(client_sockets[i], client_message, strlen(client_message));
-       		}
-       		elevator.new_floor_order = atoi(client_message);
-       	}
-       	else 
-        	write(sock, client_message, strlen(client_message));
-        //write(client2, client_message, strlen(client_message));
-        //Send the message back to client
-        //write(sock , client_message , strlen(client_message));
-        */
-        //write(sock , client_message , strlen(client_message));
-      	
-      	//puts("Client message:");
+      printf("#Clients: %d\n",clients); 
+      if(client_id == 0){
+        system("gnome-terminal -x ./test 0");
+        
+      }
+      else{ 
+      	if((clients+1)==2 && client_id == 1){//Client 1 disconnected, client 2 will now be client 1 
+          elev_client[1].floor_current = elev_client[2].floor_current; 
+          for(int i=0;i<N_FLOORS;i++){
+            elev_client[1].queue[i]=elev_client[2].queue[i];
+          }
+      		Message message_send;
+      		message_send.type = ID_UPDATE;
+      		message_send.ID = client_id;
+      		client_sockets[1] = client_sockets[2];
+      		char server_message[BUFSIZE];
+      		serialization(ID_UPDATE, message_send, server_message);
+      		write(client_sockets[1], server_message, strlen(server_message));
+      	}
+      	//sleep(1);
+      	reallocate_orders(clients);	
+      }
+  }
+  else if(read_size == -1){
+      clients--;
+      perror("recv failed, handler");
+      printf("#Clients: %d\n",clients); 
+  }
+       
+  //Free the socket pointer
+  free(socket_desc);
    
-    	//printf("Client message: %d\n", atoi(client_message));   	//puts(client_message);
-
-	     
-        //printf("Client message: %d", elevator.new_floor_order);
-
-       /* if(!strcmp(client_message,elev_go));
-        {
-            //Kjør heis
-            flag = 1;
-            elevator.new_floor_order=3;
-            printf("Halla");
-        }
-        */
-        bzero(client_message,BUFSIZE);
-    }
-     
-    if(read_size == 0)
-    {
-        puts("Client disconnected");
-        clients--;
-        fflush(stdout);
-        printf("#Clients: %d\n",clients); 
-        if(client_id == 0){
-          system("gnome-terminal -x ./test 0");
-        }
-    }
-    else if(read_size == -1)
-    {
-        clients--;
-        perror("recv failed, handler");
-        printf("#Clients: %d\n",clients); 
-    }
-         
-    //Free the socket pointer
-    free(socket_desc);
-     
-    return 0;
+  return 0;
 }
 
 void tcp_listen(){
@@ -325,29 +306,227 @@ void tcp_listen(){
         pthread_t sniffer_thread;
         new_sock = malloc(1);
         *new_sock = new_socket;
-        client_sockets[clients-1] = new_socket;
+        char *serv_ip =   inet_ntoa(server.sin_addr);
+        char *client_ip = inet_ntoa(client.sin_addr);
+        if(!strcmp(serv_ip,client_ip)){
+          client_sockets[0]=new_socket;
+          client_ip[0]=client_ip;
+        }
+        else
+          client_sockets[clients-1] = new_socket;
+          client_ip[clients-1]=client_ip;
         //*sockets[clients-1] = new_socket; 
         if( pthread_create( &sniffer_thread , NULL ,  tcp_connection_handler , (void*) new_sock) < 0)
         {
             perror("could not create thread");
-            return 1;
+            return -1;
         }
-         
-        //Now join the thread , so that we dont terminate before the thread
+
+        Message message_recovery;
+        int sum=0;
+        for(int i=0;i<clients;i++){
+          if(!strcmp(recovery_local_orders.ip_table[i],client_ip)){
+            for(int j=0;j<N_FLOORS;j++){
+              if(recovery_local_orders.orders[i][j]){
+                message_recovery.elevator.queue[j]=1;
+                sum+=1;
+              }
+            }
+          }   
+        }
+        if(sum){
+          char transmit[BUFSIZE];
+          serialization(RECOVER_LOCAL_ORDERS, message_recovery, transmit);
+          write(client_sockets[clients-1], transmit, strlen(transmit));
+        }
         puts("Handler assigned");
         //pthread_join( sniffer_thread , NULL);
+
         
     }
      
     if (new_socket<0)
     {
         perror("accept failed");
-        return 1;
+        return -1;
 
     } //Listens on TCP
 }
 
-void connection_init(void){
+void* udp_listen(){
+  int sock = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
+  struct sockaddr_in sa; 
+  char buffer[1024];
+  char buffer2[1024];
+  
+  strcpy(buffer2, "Noen gangstas her?");
+  ssize_t recsize;
+  socklen_t fromlen;
+
+  memset(&sa, 0, sizeof sa);
+  sa.sin_family = AF_INET;
+  sa.sin_addr.s_addr = htonl(INADDR_ANY);
+  sa.sin_port = htons(PORT);
+  fromlen = sizeof(sa);
+  setsockopt(sock, SOL_SOCKET, SO_REUSEPORT, &optval, sizeof(optval));
+  if (-1 == bind(sock, (struct sockaddr *)&sa, sizeof sa)) {
+    perror("error bind failed");
+    close(sock);
+    exit(EXIT_FAILURE);
+  }
+
+  for (;;) {
+    recsize = recvfrom(sock, (void*)buffer, sizeof buffer, 0, (struct sockaddr*)&sa, &fromlen);
+    if (recsize < 0) {
+      //fprintf(stderr, "%s\n", strerror(errno));
+      exit(EXIT_FAILURE);
+     }
+
+    if(!strcmp(buffer2,buffer)){
+        //New connection
+        printf("New connection discovered\n");
+        printf("Recieved: %.*s\n", (int)recsize, buffer);
+        pthread_mutex_lock(&mutex);
+        new_conn = 1;
+        pthread_mutex_unlock(&mutex);
+        strcpy(buffer, "asdf");
+      }
+
+    //printf("recsize: %zu\n ", recsize);
+        //sleep(0.1);
+    
+    }
+    return NULL; //Listens on UDP
+}
+void* udp_send(){
+  int sock;
+  struct sockaddr_in sa;
+  int bytes_sent;
+  int s = sizeof(sa);
+  char buffer[200];
+  strcpy(buffer, "Halla");
+
+  //Get broadcast address
+  int fd;
+  struct ifreq ifr;
+  fd = socket(AF_INET, SOCK_DGRAM, 0);
+  /* I want to get an IPv4 IP address */
+  ifr.ifr_addr.sa_family = AF_INET;
+  /* I want IP address attached to "eth0" */
+  strncpy(ifr.ifr_name, "eth0", IFNAMSIZ-1);
+  ioctl(fd, SIOCGIFBRDADDR, &ifr);
+  close(fd);
+  char* BROADCASTIP = inet_ntoa(((struct sockaddr_in *)&ifr.ifr_broadaddr)->sin_addr);
+
+  //Set up socket
+  sock = socket(AF_INET, SOCK_DGRAM, 0);
+  int broadcastEnable=1;
+  int ret=setsockopt(sock, SOL_SOCKET, SO_BROADCAST, &broadcastEnable, sizeof(broadcastEnable));
+
+  if (-1 == sock) {
+      /* if socket failed to initialize, exit */
+      printf("Error Creating Socket");
+      exit(EXIT_FAILURE);
+    }
+ 
+  /* Zero out socket address */
+  memset(&sa, 0, sizeof sa);
+  
+  /* The address is IPv4 */
+  sa.sin_family = AF_INET;
+  sa.sin_port = htons(PORT);
+   /* IPv4 adresses is a uint32_t, convert a string representation of the octets to the appropriate     value */
+  //sa.sin_addr.s_addr = inet_addr("129.241.187.255");
+  //sa.sin_addr.s_addr = hton1(INADDR_ANY);
+  
+    
+  /* sockets are unsigned shorts, htons(x) ensures x is in network byte order, set the port to 7654 */
+  //sa.sin_port = htons(PORT);
+
+  if(inet_aton(BROADCASTIP, &sa.sin_addr) ==0)
+   {
+    exit(1);
+   }
+
+  for(;;){
+    if(new_conn == 1){
+          //Sends over message, "Hello"
+      for(int i = 0;i<10;i++){
+        bytes_sent = sendto(sock, buffer, strlen(buffer), 0,(struct sockaddr*)&sa, s);
+        if (bytes_sent < 0) {
+          //printf("Error sending packet: %s\n", strerror(errno));
+          exit(EXIT_FAILURE);
+        }    
+      }
+      printf("Packets sent \n");
+      pthread_mutex_lock(&mutex);
+      new_conn = 0;
+      pthread_mutex_unlock(&mutex);
+      printf("Waiting for new connections\n");
+    }
+  }
+  close(sock); /* close the socket */
+
+  return NULL; //Broadcasts on UDP
+}
+void *tcp_send(void *transmit){
+	//Get the ,socket descriptor
+
+	char *buf = (char*)transmit;
+   //strcpy(buf,transmit);
+   // printf("In TCP SEND: Button floor: %d\n", buf[7]);
+     //	printf("In TCP SEND: Button type : %d\n", buf[8]);
+
+	 char buf2[BUFSIZE];
+	 bzero(buf2,BUFSIZE);
+	 for(int i = 0;i<BUFSIZE;i++){
+		buf2[i] = buf[i];
+	 }
+    //char buf[9];
+    //buf = transmit;
+    //send the message line to the server 
+    write(*master_socket, buf2, strlen(buf2));
+}
+void tcp_recieve(void *socket_desc){
+  //Get the socket descriptor
+  int sock = *(int*)socket_desc;
+  char buf[BUFSIZE];
+  char empty[BUFSIZE];
+  bzero(empty, BUFSIZE);
+  bzero(buf, BUFSIZE);
+  //strcpy(empty," ");
+  while(connection){
+    
+    if(connection)
+    	recv(sock, buf , BUFSIZE,0);
+    if(!strcmp(buf,empty)){
+        printf("recv failed\n");
+        connection = 0;
+      }
+    else{
+      char msg[BUFSIZE];
+      strcpy(msg,buf);
+    	printf("Server message:\t");
+    	for(int i = 0;i<BUFSIZE;i++){
+        if(buf[i] == '0')
+          buf[i] = 0;
+  			 printf("%d ",buf[i]);
+  		  }
+		  printf("\n");
+		  //char msg[BUFSIZE];
+		  strcpy(msg,buf);
+    //  Message message_received = deserialization(buf);
+		  pthread_t client_message_handler_thread;
+	    pthread_create(&client_message_handler_thread, NULL , client_message_handler, (void*)msg);
+     //pthread_create(&client_message_handler_thread, NULL , client_message_handler, (void *)&message_received);	
+	  }
+    bzero(buf, BUFSIZE);
+  }
+  free(socket_desc);    
+}
+int connection_init(void){
+
+    pthread_mutex_init(&mutex,NULL); //PLASSERTE DENNE HER FORDI DET ER LETTVINDT
     int sock,sock_r;
     struct sockaddr_in sa;
     int bytes_sent;
@@ -360,36 +539,36 @@ void connection_init(void){
     strcpy(buffer,"Noen gangstas her?");
     strcpy(buffer2,"Halla");
 
-    /* create an Internet, datagram, socket using UDP */
-	    //sock= socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+   /* create an Internet, datagram, socket using UDP */
+      //sock= socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 
-	    //sock = socket(AF_INET, SOCK_DGRAM, 0);
-	    //int broadcastEnable=1;
-	    //int ret=setsockopt(sock, SOL_SOCKET, SO_BROADCAST, &broadcastEnable, sizeof(broadcastEnable));
-	    //setsockopt(sock, SOL_SOCKET, SO_REUSEPORT, &optval, sizeof(optval));
-	    //if (-1 == sock) {
-	      /* if socket failed to initialize, exit */
-	      //printf("Error Creating Socket");
-	      //exit(EXIT_FAILURE);
-	    //}
+      //sock = socket(AF_INET, SOCK_DGRAM, 0);
+      //int broadcastEnable=1;
+      //int ret=setsockopt(sock, SOL_SOCKET, SO_BROADCAST, &broadcastEnable, sizeof(broadcastEnable));
+      //setsockopt(sock, SOL_SOCKET, SO_REUSEPORT, &optval, sizeof(optval));
+      //if (-1 == sock) {
+        /* if socket failed to initialize, exit */
+        //printf("Error Creating Socket");
+        //exit(EXIT_FAILURE);
+      //}
 
-	    /* Zero out socket address */
-	    //memset(&sa, 0, sizeof sa);
+      /* Zero out socket address */
+      //memset(&sa, 0, sizeof sa);
 
-	    /* The address is IPv4 */
-	    //sa.sin_family = AF_INET;
-	    //sa.sin_port = htons(PORT);
-	    /* IPv4 adresses is a uint32_t, convert a string representation of the octets to the appropriate     value */
-	    //sa.sin_addr.s_addr = inet_addr("129.241.187.255");
-	    //sa.sin_addr.s_addr = hton1(INADDR_ANY);
+      /* The address is IPv4 */
+      //sa.sin_family = AF_INET;
+      //sa.sin_port = htons(PORT);
+      /* IPv4 adresses is a uint32_t, convert a string representation of the octets to the appropriate     value */
+      //sa.sin_addr.s_addr = inet_addr("129.241.187.255");
+      //sa.sin_addr.s_addr = hton1(INADDR_ANY);
 
 
-	    /* sockets are unsigned shorts, htons(x) ensures x is in network byte order, set the port to 7654 */
-	    //sa.sin_port = htons(PORT);
+    /* sockets are unsigned shorts, htons(x) ensures x is in network byte order, set the port to 7654 */
+      //sa.sin_port = htons(PORT);
 
-	    //if(inet_aton(SERVER, &sa.sin_addr) ==0)
-	    //{
-	    //exit(1);
+      //if(inet_aton(SERVER, &sa.sin_addr) ==0)
+      //{
+      //exit(1);
     //}
   
     //NEW________
@@ -479,12 +658,8 @@ void connection_init(void){
        {
           printf("Master not discovered\n");
           printf("Recieved: %s\n", buffer3);
-          //if(connection == 0)
-          //{
+          boss_init();
 
-            boss_init();
-          //}
-          
        }
       //printf("recsize: %zu\n ", recsize);
       //sleep(0.1);
@@ -494,182 +669,7 @@ void connection_init(void){
         boss = 1;
     } 
     close(sock_r);  //Checks if there exists a boss through UDP, if not set self to boss
-}
-
-void* udp_listen(){
-  int sock = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
-  struct sockaddr_in sa; 
-  char buffer[1024];
-  char buffer2[1024];
-  
-  strcpy(buffer2, "Noen gangstas her?");
-  ssize_t recsize;
-  socklen_t fromlen;
-
-  memset(&sa, 0, sizeof sa);
-  sa.sin_family = AF_INET;
-  sa.sin_addr.s_addr = htonl(INADDR_ANY);
-  sa.sin_port = htons(PORT);
-  fromlen = sizeof(sa);
-  setsockopt(sock, SOL_SOCKET, SO_REUSEPORT, &optval, sizeof(optval));
-  if (-1 == bind(sock, (struct sockaddr *)&sa, sizeof sa)) {
-    perror("error bind failed");
-    close(sock);
-    exit(EXIT_FAILURE);
-  }
-
-  for (;;) {
-    recsize = recvfrom(sock, (void*)buffer, sizeof buffer, 0, (struct sockaddr*)&sa, &fromlen);
-    if (recsize < 0) {
-      //fprintf(stderr, "%s\n", strerror(errno));
-      exit(EXIT_FAILURE);
-     }
-
-    if(!strcmp(buffer2,buffer)){
-        //New connection
-        printf("New connection discovered\n");
-        printf("Recieved: %.*s\n", (int)recsize, buffer);
-        pthread_mutex_lock(&mutex);
-        new_conn = 1;
-        pthread_mutex_unlock(&mutex);
-        strcpy(buffer, "asdf");
-      }
-
-    //printf("recsize: %zu\n ", recsize);
-        //sleep(0.1);
-    
-    }
-    return NULL; //Listens on UDP
-}
-
-void* udp_send(){
-  int sock;
-  struct sockaddr_in sa;
-  int bytes_sent;
-  int s = sizeof(sa);
-  char buffer[200];
-  strcpy(buffer, "Halla");
-
-  //Get broadcast address
-  int fd;
-  struct ifreq ifr;
-  fd = socket(AF_INET, SOCK_DGRAM, 0);
-  /* I want to get an IPv4 IP address */
-  ifr.ifr_addr.sa_family = AF_INET;
-  /* I want IP address attached to "eth0" */
-  strncpy(ifr.ifr_name, "eth0", IFNAMSIZ-1);
-  ioctl(fd, SIOCGIFBRDADDR, &ifr);
-  close(fd);
-  char* BROADCASTIP = inet_ntoa(((struct sockaddr_in *)&ifr.ifr_broadaddr)->sin_addr);
-
-  //Set up socket
-  sock = socket(AF_INET, SOCK_DGRAM, 0);
-  int broadcastEnable=1;
-  int ret=setsockopt(sock, SOL_SOCKET, SO_BROADCAST, &broadcastEnable, sizeof(broadcastEnable));
-
-  if (-1 == sock) {
-      /* if socket failed to initialize, exit */
-      printf("Error Creating Socket");
-      exit(EXIT_FAILURE);
-    }
- 
-  /* Zero out socket address */
-  memset(&sa, 0, sizeof sa);
-  
-  /* The address is IPv4 */
-  sa.sin_family = AF_INET;
-  sa.sin_port = htons(PORT);
-   /* IPv4 adresses is a uint32_t, convert a string representation of the octets to the appropriate     value */
-  //sa.sin_addr.s_addr = inet_addr("129.241.187.255");
-  //sa.sin_addr.s_addr = hton1(INADDR_ANY);
-  
-    
-  /* sockets are unsigned shorts, htons(x) ensures x is in network byte order, set the port to 7654 */
-  //sa.sin_port = htons(PORT);
-
-  if(inet_aton(BROADCASTIP, &sa.sin_addr) ==0)
-   {
-    exit(1);
-   }
-
-  for(;;){
-    if(new_conn == 1){
-          //Sends over message, "Hello"
-      for(int i = 0;i<10;i++){
-        bytes_sent = sendto(sock, buffer, strlen(buffer), 0,(struct sockaddr*)&sa, s);
-        if (bytes_sent < 0) {
-          //printf("Error sending packet: %s\n", strerror(errno));
-          exit(EXIT_FAILURE);
-        }    
-      }
-      printf("Packets sent \n");
-      pthread_mutex_lock(&mutex);
-      new_conn = 0;
-      pthread_mutex_unlock(&mutex);
-      printf("Waiting for new connections\n");
-    }
-  }
-  close(sock); /* close the socket */
-
-  return NULL; //Broadcasts on UDP
-}
-
-void *tcp_send(void *transmit){
-	 //Get the ,socket descriptor
-
-    char *buf = (char*)transmit;
-    //strcpy(buf,transmit);
-   // printf("In TCP SEND: Button floor: %d\n", buf[7]);
-   //	printf("In TCP SEND: Button type : %d\n", buf[8]);
-
-	 char buf2[BUFSIZE];
-	 bzero(buf2,BUFSIZE);
-	 for(int i = 0;i<13;i++){
-		buf2[i] = buf[i];
-	 }
-
-    //char buf[9];
-    //buf = transmit;
-    //send the message line to the server 
-    write(*master_socket, buf2, strlen(buf2));
-     
-}
-
-void tcp_recieve(void *socket_desc){
-  //Get the socket descriptor
-  int sock = *(int*)socket_desc;
-  char buf[BUFSIZE];
-  char empty[BUFSIZE];
-  bzero(empty, BUFSIZE);
-  bzero(buf, BUFSIZE);
-  //strcpy(empty," ");
-  while(connection){
-    
-    if(connection)
-    	recv(sock, buf , BUFSIZE,0);
-    if(!strcmp(buf,empty)){
-        printf("recv failed\n");
-        connection = 0;
-      }
-    else{
-      char msg[BUFSIZE];
-      strcpy(msg,buf);
-    	printf("Server message:\n");
-    	for(int z = 0;z<19;z++){
-        if(buf[z] == '0')
-          buf[z] = 0;
-  			 printf("%d ",buf[z]);
-  		  }
-		  printf("\n");
-		  //char msg[BUFSIZE];
-		  //strcpy(msg,buf);
-		  pthread_t message_handler_thread;
-	    pthread_create(&message_handler_thread, NULL , message_handler, (void*)msg);	
-	  }
-    bzero(buf, BUFSIZE);
-  }
-  free(socket_desc);
-     
+    return boss;
 }
 
 void client_init(){
@@ -785,47 +785,133 @@ void boss_init(){
   pthread_create( &tcp_listen_thread, NULL, tcp_listen, NULL);
   system("gnome-terminal -x ./test 0");
 
+
+  sleep(14);
+  int sum;
+  for(int i = 0;i<6;i++){
+  	sum+=queue[i][0];
+  }
+  if(sum != 0){
+  	reallocate_orders(clients);
+  }
+
   pthread_join( udp_listen_thread , NULL);
   pthread_join( udp_send_thread , NULL);
   pthread_join( tcp_listen_thread , NULL);
 }
 
-int main(int argc , char *argv[])
-{   
-  
-    pthread_mutex_init(&mutex,NULL);
 
-    connection_init();
-    printf("Boss = %d\n", boss);
-    if(boss == 1){
+void serialization(int message_type, Message message_send, char *transmit){
+  message_send.type = message_type;
+  //bzero(transmit,BUFSIZE);
+  //message_send.ID = client_ID;
+  transmit[0] = message_send.ID;
+  transmit[1] = message_send.type;
+  transmit[2] = message_send.elevator.floor_current;
+  transmit[3] = message_send.elevator.reached_destination;
+  transmit[4] = message_send.elevator.prev_direction;
+  transmit[5] = message_send.elevator.direction;
+  transmit[6] = message_send.elevator.new_floor_order;
+  transmit[7] = message_send.elevator.queue[0];
+  transmit[8] = message_send.elevator.queue[1];
+  transmit[9] = message_send.elevator.queue[2];
+  transmit[10] = message_send.elevator.queue[3];
+  transmit[11] = message_send.button.floor;
+  transmit[12] = message_send.button.type;
+  //Mekke for-løkke, tilsvarende for deserialization
+  transmit[13] = message_send.orders[0][0];
+  transmit[14] = message_send.orders[1][0];
+  transmit[15] = message_send.orders[2][0];
+  transmit[16] = message_send.orders[3][0];
+  transmit[17] = message_send.orders[4][0];
+  transmit[18] = message_send.orders[5][0];
+  transmit[19] = message_send.orders[0][1];
+  transmit[20] = message_send.orders[1][1];
+  transmit[21] = message_send.orders[2][1];
+  transmit[22] = message_send.orders[3][1];
+  transmit[23] = message_send.orders[4][1];
+  transmit[24] = message_send.orders[5][1];
 
-      for(int i=0;i<6;i++){ //Må ikke gjøres her
-        queue[i][2] = -1; 
-      }
+  for(int i = 0;i<BUFSIZE-1;i++){
+    if(transmit[i] == 0)
+      transmit[i] = '0';
+  }
+  printf("\n");
 
-      //pthread_t tcp_listen_thread,udp_listen_thread,udp_send_thread,communication_thread,elev_thread;
-      //pthread_create( &udp_listen_thread, NULL, udp_listen, NULL);
-      //pthread_create( &udp_send_thread, NULL, udp_send, NULL);
-      //pthread_create( &tcp_listen_thread, NULL, tcp_listen, NULL);
-      //system("gnome-terminal -x ./test 0");
-
-      //pthread_join( udp_listen_thread , NULL);
-      //pthread_join( udp_send_thread , NULL);
-      //pthread_join( tcp_listen_thread , NULL);
-
-    }
-    else{
-
-      //client_init();
-    }
-    //pthread_t tcp_listen_thread,udp_listen_thread, connection_init_thread;
-    //pthread_create( &connection_init_thread, NULL, connection_init, NULL);
-    //pthread_create( &udp_listen_thread, NULL, udp_listen, NULL);
-    //pthread_create( &tcp_listen_thread, NULL, tcp_listen, NULL);
-     
-    return 0;
 }
 
+Message deserialization(char *msg_recv){
+  for(int i = 0;i<BUFSIZE-1;i++){
+    if(msg_recv[i] == '0')
+      msg_recv[i] = 0;
+  }
+  Message message_receive;
 
+  message_receive.ID=msg_recv[0];
+  message_receive.type=msg_recv[1];
+  message_receive.elevator.floor_current=msg_recv[2];
+  message_receive.elevator.reached_destination=msg_recv[3];
+  message_receive.elevator.prev_direction=msg_recv[4];
+  message_receive.elevator.direction=msg_recv[5];
+  message_receive.elevator.new_floor_order=msg_recv[6];
+  message_receive.elevator.queue[0] = msg_recv[7];
+  message_receive.elevator.queue[1] = msg_recv[8];
+  message_receive.elevator.queue[2] = msg_recv[9];
+  message_receive.elevator.queue[3] = msg_recv[10];
+  message_receive.button.floor = msg_recv[11];
+  message_receive.button.type = msg_recv [12];
+  message_receive.orders[0][0] = msg_recv[13];
+  message_receive.orders[1][0] = msg_recv[14];
+  message_receive.orders[2][0] = msg_recv[15];
+  message_receive.orders[3][0] = msg_recv[16];
+  message_receive.orders[4][0] = msg_recv[17];
+  message_receive.orders[5][0] = msg_recv[18];
+  message_receive.orders[0][1] = msg_recv[19];
+  message_receive.orders[1][1] = msg_recv[20];
+  message_receive.orders[2][1] = msg_recv[21];
+  message_receive.orders[3][1] = msg_recv[22];
+  message_receive.orders[4][1] = msg_recv[23];
+  message_receive.orders[5][1] = msg_recv[24];
+  return message_receive;
 
+}
 
+void send_message(int message_type, Message message_send){
+  message_send.type = message_type;
+  char transmit[BUFSIZE];
+  transmit[0] = message_send.ID;
+  transmit[1] = message_send.type;
+  transmit[2] = message_send.elevator.floor_current;
+  transmit[3] = message_send.elevator.reached_destination;
+  transmit[4] = message_send.elevator.prev_direction;
+  transmit[5] = message_send.elevator.direction;
+  transmit[6] = message_send.elevator.new_floor_order;
+  transmit[7] = message_send.elevator.queue[0];
+  transmit[8] = message_send.elevator.queue[1];
+  transmit[9] = message_send.elevator.queue[2];
+  transmit[10] = message_send.elevator.queue[3];
+  transmit[11] = message_send.button.floor;
+  transmit[12] = message_send.button.type;
+  //Mekke for-løkke, tilsvarende for deserialization
+  transmit[13] = message_send.orders[0][0];
+  transmit[14] = message_send.orders[1][0];
+  transmit[15] = message_send.orders[2][0];
+  transmit[16] = message_send.orders[3][0];
+  transmit[17] = message_send.orders[4][0];
+  transmit[18] = message_send.orders[5][0];
+  transmit[19] = message_send.orders[0][1];
+  transmit[20] = message_send.orders[1][1];
+  transmit[21] = message_send.orders[2][1];
+  transmit[22] = message_send.orders[3][1];
+  transmit[23] = message_send.orders[4][1];
+  transmit[24] = message_send.orders[5][1];
+
+  for(int i = 0;i<BUFSIZE-1;i++){
+    if(transmit[i] == 0)
+      transmit[i] = '0';
+   }
+  printf("\n");
+  
+  pthread_t message_send_thread;
+  pthread_create(&message_send_thread, NULL , tcp_send, (void*)transmit); 
+}
