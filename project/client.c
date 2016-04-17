@@ -201,14 +201,14 @@ void elevator_thread(){
 			int orders_down=0;
 			if(elevator.direction == DIRN_STOP){
 				for(int i=elevator.floor_current+1;i<N_FLOORS;i++){
-					if(elevator.queue[i] == 1){
+					if(elevator.queue[i] != 0){
 						orders_up++;
 						puts("Order up");
 					}
 
 				}
 				for( int i=elevator.floor_current-1;i>=0;i--){
-					if(elevator.queue[i] == 1){
+					if(elevator.queue[i] != 0){
 						orders_down++;
 						puts("Order down");
 					}
@@ -490,7 +490,9 @@ void button_check(){
 
 
 void check_network(){
+	
 	while(!network){
+		sleep(10);
 		int fd;
 	    struct ifreq ifr;
 	    fd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -505,6 +507,7 @@ void check_network(){
 	    char* BROADCASTIP = inet_ntoa(((struct sockaddr_in *)&ifr.ifr_broadaddr)->sin_addr);
 	    printf("%s\n",BROADCASTIP);
 	    if(strcmp(no_network,BROADCASTIP)){
+	    	puts("Found network");
 	    	network = 1;
 	    	connection = 0;
 	    }
