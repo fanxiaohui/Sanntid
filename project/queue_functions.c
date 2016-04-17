@@ -5,6 +5,7 @@
 #include "communication.h"
 
 
+//add_to_queue returns positive => new order from outside
 int add_to_queue(elev_button_type_t type, int  floor){
   if(type == BUTTON_CALL_UP && !queue[floor][0]){
     queue[floor][0] = 1;
@@ -17,7 +18,7 @@ int add_to_queue(elev_button_type_t type, int  floor){
   else
     return 0;
 }
-//add_to_queue returns positive -> new order from outside
+
 int cost_function(elev_button_type_t type, int floor){
   int direction;
   if(type==BUTTON_CALL_UP)
@@ -84,23 +85,6 @@ int cost_function(elev_button_type_t type, int floor){
       }
     }
   }
-
-  /*
-  //Elevator runs in the ordrered direction, and is stopping at the same floor
-    for(int i=0;i<clients;i++){
-      if(direction == DIRN_UP && elev_client[i].direction == direction && elev_client[i].queue[floor]==1){
-        if(abs(elev_client[i].floor_current-floor)<delta){
-          delta=abs(elev_client[i].floor_current-floor);
-          client =i;
-        }   
-      }
-    }
-    if(client!=-1){
-      return client;
-    }
-
-  */
-
   //Elevator runs in the ordererd direction, but is not stopping at the same floor
   for(int i=0;i<clients;i++){
     if(direction == DIRN_UP && elev_client[i].direction == DIRN_UP && elev_client[i].floor_current<=floor){
@@ -123,9 +107,8 @@ int cost_function(elev_button_type_t type, int floor){
   }
 
 
-  //At this point I know that all elevators are running in the wrong direction
-  // -> I assign client 1
-  printf("Client top: %d \t Client Bottom: %d \t Client Running: %d \t Client free: %d\n", client_top, client_bottom, client_running, client_free);
+  //At this point it's known that all elevators are running in the wrong direction
+  // -> Assign order to client 0
   if((client_top == -1) && (client_free == -1) && (client_bottom == -1) && (client_running == -1))
     return 0;
 
@@ -154,39 +137,74 @@ int cost_function(elev_button_type_t type, int floor){
   } 
 }
 void reallocate_orders(int number_of_clients){
-  if(number_of_clients==2)
-  {
-    if(number_of_clients == 1){
-      for(int i = 0;i<6;i++){
-        if(queue[i][0] == 1){
-          queue[i][1] = 0;
-        }
-      }
-    }
-    else if(number_of_clients == 2){
-      for(int i = 0;i<3;i++){
-        if(queue[i][0] == 1)
-          queue[i][1] = 0;
-      }
-      for(int i = 3;i<6;i++){
-        if(queue[i][0] == 1){
-          queue[i][1] = 1;
-        }
+  if(number_of_clients == 1){
+    for(int i = 0;i<6;i++){
+      if(queue[i][0] == 1){
+        queue[i][1] = 0;
       }
     }
   }
-  Message message_send;
-  
+  else if(number_of_clients == 2){
+    for(int i = 0;i<3;i++){
+      if(queue[i][0] == 1)
+        queue[i][1] = 0;
+    }
+    for(int i = 3;i<6;i++){
+      if(queue[i][0] == 1){
+        queue[i][1] = 1;
+      }
+    }
+  }
+  Message message_send; 
   char server_message[BUFSIZE];
     for(int i = 0;i<6;i++){
       message_send.orders[i][0] = queue[i][0];
       message_send.orders[i][1] = queue[i][1];
     }
-
   serialization(ORDER_UPDATE, message_send, server_message);
-
   for(int i = 0;i<clients;i++){
       write(client_sockets[i], server_message, strlen(server_message));  
   }
 }
 
+void *order_counter(void *x){
+  char *buf = (char*)x;
+  char server_message[BUFSIZE];
+  Message message_send;
+  char order_and_ID[2];
+  for(int i = 0;i<2;i++){
+    order_and_ID[i] = buf[i];
+  }
+  puts("Order counter");
+  sleep(20);
+  if(queue[order_and_ID[0]][0]!=0 && queue[order_and_ID[0]][1]==order_and_ID[1]){//Check if order is not taken and ID is correct
+    printf("Client: %d did not finish order", order_and_ID[1]);
+    if(clients == 1){
+      queue[order_and_ID[0]][1] = 0;
+      for(int i = 0;i<6;i++){
+        message_send.orders[i][0] = queue[i][0];
+        message_send.orders[i][1] = queue[i][1]; 
+      }
+    }
+    else{
+      if(queue[order_and_ID[0]][1] == 0){
+        queue[order_and_ID[0]][1] = 1;
+        for(int i = 0;i<6;i++){
+          message_send.orders[i][0] = queue[i][0];
+          message_send.orders[i][1] = queue[i][1]; 
+        }  
+      }
+      else{
+        queue[order_and_ID[0]][1] = 0;
+        for(int i = 0;i<6;i++){
+          message_send.orders[i][0] = queue[i][0];
+          message_send.orders[i][1] = queue[i][1]; 
+        }  
+      }
+    }
+    serialization(ORDER_UPDATE, message_send, server_message);
+    write(client_sockets[0], server_message, strlen(server_message));   
+  }
+  else
+    puts("order done");
+}
