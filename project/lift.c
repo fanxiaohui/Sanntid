@@ -29,7 +29,7 @@
 
 Elevator elevator;
 int elev_orders[6][2];
-int master_checkin = 0;
+//int master_checkin = 0;
 connection;
 network;
 pthread_mutex_t mutex;
@@ -123,19 +123,19 @@ void* client_message_handler(void *msg_recv){
 			break;
 		case NETCHECK:
 			puts("NETCHECK");
-			master_checkin = 1;
+			//master_checkin = 1;
 			char net_check[BUFSIZE];
 			Message message_send;
 			serialization(NETCHECK, message_send, net_check);
 			pthread_t message_send_thread;
 			pthread_create(&message_send_thread, NULL , tcp_send, (void*)net_check);
-			sleep(6);
-			master_checkin = 0;
-			sleep(5);
-			if(master_checkin == 0){
-				puts("Master disconnected\n");
-				connection = 0;
-			}
+			//sleep(6);
+			//master_checkin = 0;
+			//sleep(5);
+			//if(master_checkin == 0){
+			//	puts("Master disconnected\n");
+			//	connection = 0;
+			//}
 			break;
 	}
 }
@@ -425,7 +425,7 @@ void *tcp_send(void *transmit){
 		msg[i] = buf[i];
 	} 
 	if(network)
-    	write(*master_socket, msg, strlen(msg));
+    		write(*master_socket, msg, strlen(msg));
 }
 
 void tcp_recieve(void *socket_desc){
@@ -433,7 +433,7 @@ void tcp_recieve(void *socket_desc){
   int sock = *(int*)socket_desc;
   //Set up timed socket
   struct timeval tv;
-  tv.tv_sec = 11;  /* 2 Secs Timeout */
+  tv.tv_sec = 11;  /* 11 Secs Timeout */
   tv.tv_usec = 0;
   setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO,(char *)&tv,sizeof(tv)); 
   char buf[BUFSIZE];
@@ -444,7 +444,7 @@ void tcp_recieve(void *socket_desc){
     if(connection)
     	recv(sock, buf , BUFSIZE,0);
     if(!strcmp(buf,empty)){
-        puts("recv failed");
+        puts("Recv Failed, Master Unavailable");
         connection = 0;
       }
     else{
@@ -464,13 +464,14 @@ void tcp_recieve(void *socket_desc){
 	  }
     bzero(buf, BUFSIZE);
   }
-  puts("TCP Recieve Thread Killed");
+  
   free(socket_desc);    
 }
 
 void check_network(){
 	while(!network){
-		int fd;
+	    sleep(10);
+	    int fd;
 	    struct ifreq ifr;
 	    fd = socket(AF_INET, SOCK_DGRAM, 0);
 	    // Get IPv4 address attached to "eth0" 
@@ -487,7 +488,6 @@ void check_network(){
 	    	network = 1;
 	    	connection = 0;
 	    }
-	    sleep(10);
 	}
 }
 
